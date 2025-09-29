@@ -195,6 +195,32 @@ app.post('/login', async (req, res) => {
   }
 });
 
+// Endpoint temporal para inicializar la base de datos
+app.post('/init-db', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Leer el archivo schema.sql
+    const schemaPath = path.join(__dirname, 'db', 'schema.sql');
+    const schemaSQL = fs.readFileSync(schemaPath, 'utf8');
+    
+    // Ejecutar el schema
+    await pool.query(schemaSQL);
+    
+    res.json({ 
+      success: true, 
+      message: 'Base de datos inicializada correctamente' 
+    });
+  } catch (error) {
+    console.error('Error inicializando DB:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 // Verificar token
 app.get('/verify-token', authenticateToken, (req, res) => {
   res.json({ valid: true, user: req.user });
