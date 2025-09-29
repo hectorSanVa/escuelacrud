@@ -221,6 +221,34 @@ app.post('/init-db', async (req, res) => {
   }
 });
 
+// Endpoint temporal para verificar tablas
+app.get('/check-tables', async (req, res) => {
+  try {
+    // Consultar todas las tablas
+    const result = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      ORDER BY table_name
+    `);
+    
+    const tables = result.rows.map(row => row.table_name);
+    
+    res.json({ 
+      success: true, 
+      tables: tables,
+      count: tables.length,
+      message: `Se encontraron ${tables.length} tablas en la base de datos`
+    });
+  } catch (error) {
+    console.error('Error verificando tablas:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 // Verificar token
 app.get('/verify-token', authenticateToken, (req, res) => {
   res.json({ valid: true, user: req.user });
