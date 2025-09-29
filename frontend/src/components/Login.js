@@ -27,7 +27,7 @@ function Login({ onLogin }) {
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:5000/login', credentials);
+      const response = await axios.post('/login', credentials);
       
       if (response.data.token) {
         localStorage.setItem('token', response.data.token);

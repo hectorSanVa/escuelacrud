@@ -4,13 +4,23 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config();
 
 const app = express();
-app.use(cors());
+
+// Configuración CORS para producción
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
+};
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 
-// JWT Secret (en producción usar variable de entorno)
-const JWT_SECRET = 'unach_secret_key_2024';
+// JWT Secret (usar variable de entorno en producción)
+const JWT_SECRET = process.env.JWT_SECRET || 'unach_secret_key_2024';
 
 // Middleware para verificar JWT
 const authenticateToken = (req, res, next) => {
@@ -32,11 +42,12 @@ const authenticateToken = (req, res, next) => {
 
 // Configuración de la conexión a PostgreSQL
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'escueladb',
-  password: '210504',
-  port: 5432,
+  user: process.env.PGUSER || 'postgres',
+  host: process.env.PGHOST || 'localhost',
+  database: process.env.PGDATABASE || 'escueladb',
+  password: process.env.PGPASSWORD || '210504',
+  port: process.env.PGPORT || 5432,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
 // Probar conexión al iniciar
@@ -62,6 +73,69 @@ function handleError(res, error) {
   res.status(500).json({ error: 'Ocurrió un error en el servidor' });
 }
 
+// Migraciones simples: añadir columnas de foto si no existen
+(async () => {
+  try {
+    await pool.query("ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS foto_url TEXT");
+    await pool.query("ALTER TABLE maestros ADD COLUMN IF NOT EXISTS foto_url TEXT");
+    await pool.query("ALTER TABLE alumno_materia ADD COLUMN IF NOT EXISTS maestro_id INTEGER REFERENCES maestros(id) ON DELETE SET NULL");
+  } catch (e) {
+    console.warn('No se pudieron aplicar migraciones:', e.message);
+  }
+})();
+
+// ---------------------- Subida de imágenes (local) ----------------------
+// Crear carpeta de uploads si no existe
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
+
+// Configurar Multer
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const safeOriginal = file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    cb(null, `${Date.now()}_${safeOriginal}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowed.includes(file.mimetype)) {
+      return cb(new Error('Tipo de archivo no permitido. Usa JPG o PNG.'));
+    }
+    cb(null, true);
+  }
+});
+
+// Servir archivos estáticos
+app.use('/uploads', express.static(uploadsDir));
+
+// Endpoints de subida
+app.post('/upload/alumnos', authenticateToken, upload.single('foto'), (req, res) => {
+  try {
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.status(201).json({ url: fileUrl, filename: req.file.filename });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+app.post('/upload/maestros', authenticateToken, upload.single('foto'), (req, res) => {
+  try {
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.status(201).json({ url: fileUrl, filename: req.file.filename });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
 // ---------------------- RUTAS DE AUTENTICACIÓN ----------------------
 
 // Crear tablas de relaciones si no existen
@@ -83,8 +157,9 @@ app.post('/setup-tables', authenticateToken, async (req, res) => {
         id SERIAL PRIMARY KEY,
         alumno_id INTEGER REFERENCES alumnos(id) ON DELETE CASCADE,
         materia_id INTEGER REFERENCES materias(id) ON DELETE CASCADE,
+        maestro_id INTEGER REFERENCES maestros(id) ON DELETE SET NULL,
         calificacion DECIMAL(3,1),
-        UNIQUE(alumno_id, materia_id)
+        UNIQUE(alumno_id, materia_id, maestro_id)
       )
     `);
     
@@ -140,10 +215,10 @@ app.get('/alumnos', authenticateToken, async (req, res) => {
 // Crear
 app.post('/alumnos', authenticateToken, async (req, res) => {
   try {
-    const { nombre, grado, maestro_id, email } = req.body;
+    const { nombre, grado, maestro_id, email, foto_url } = req.body;
     const result = await pool.query(
-      'INSERT INTO alumnos(nombre, grado, maestro_id, email) VALUES ($1, $2, $3, $4) RETURNING *',
-      [nombre, grado, maestro_id, email]
+      'INSERT INTO alumnos(nombre, grado, maestro_id, email, foto_url) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [nombre, grado, maestro_id, email, foto_url || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -155,10 +230,10 @@ app.post('/alumnos', authenticateToken, async (req, res) => {
 app.put('/alumnos/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, grado, maestro_id, email } = req.body;
+    const { nombre, grado, maestro_id, email, foto_url } = req.body;
     const result = await pool.query(
-      'UPDATE alumnos SET nombre=$1, grado=$2, maestro_id=$3, email=$4 WHERE id=$5 RETURNING *',
-      [nombre, grado, maestro_id, email, id]
+      'UPDATE alumnos SET nombre=$1, grado=$2, maestro_id=$3, email=$4, foto_url=$5 WHERE id=$6 RETURNING *',
+      [nombre, grado, maestro_id, email, foto_url || null, id]
     );
     if (result.rowCount === 0) return res.status(404).json({ message: 'Alumno no encontrado' });
     res.json(result.rows[0]);
@@ -194,10 +269,10 @@ app.get('/maestros', authenticateToken, async (req, res) => {
 // Crear
 app.post('/maestros', authenticateToken, async (req, res) => {
   try {
-    const { nombre, materia, email } = req.body;
+    const { nombre, materia, email, foto_url } = req.body;
     const result = await pool.query(
-      'INSERT INTO maestros(nombre, materia, email) VALUES ($1, $2, $3) RETURNING *',
-      [nombre, materia, email]
+      'INSERT INTO maestros(nombre, materia, email, foto_url) VALUES ($1, $2, $3, $4) RETURNING *',
+      [nombre, materia, email, foto_url || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -209,10 +284,10 @@ app.post('/maestros', authenticateToken, async (req, res) => {
 app.put('/maestros/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, materia, email } = req.body;
+    const { nombre, materia, email, foto_url } = req.body;
     const result = await pool.query(
-      'UPDATE maestros SET nombre=$1, materia=$2, email=$3 WHERE id=$4 RETURNING *',
-      [nombre, materia, email, id]
+      'UPDATE maestros SET nombre=$1, materia=$2, email=$3, foto_url=$4 WHERE id=$5 RETURNING *',
+      [nombre, materia, email, foto_url || null, id]
     );
     if (result.rowCount === 0) return res.status(404).json({ message: 'Maestro no encontrado' });
     res.json(result.rows[0]);
@@ -293,23 +368,25 @@ app.delete('/materias/:id', authenticateToken, async (req, res) => {
 app.get('/alumnos/materias', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT 
+      SELECT DISTINCT ON (a.id, m.id, am.maestro_id)
         a.id as alumno_id,
         a.nombre as alumno_nombre,
         a.grado,
         a.email as alumno_email,
+        a.foto_url as alumno_foto_url,
         m.nombre as materia_nombre,
         m.codigo as materia_codigo,
         m.creditos,
         am.calificacion,
         am.materia_id as materia_id,
-        ma.nombre as maestro_nombre
+        am.maestro_id as maestro_id,
+        COALESCE(ma.nombre, 'Sin asignar') as maestro_nombre,
+        ma.foto_url as maestro_foto_url
       FROM alumnos a
       INNER JOIN alumno_materia am ON a.id = am.alumno_id
       INNER JOIN materias m ON am.materia_id = m.id
-      LEFT JOIN maestro_materia mm ON m.id = mm.materia_id
-      LEFT JOIN maestros ma ON mm.maestro_id = ma.id
-      ORDER BY a.nombre, m.nombre
+      LEFT JOIN maestros ma ON am.maestro_id = ma.id
+      ORDER BY a.id, m.id, am.maestro_id NULLS LAST
     `);
     res.json(result.rows);
   } catch (error) {
@@ -325,6 +402,8 @@ app.get('/maestros/materias', authenticateToken, async (req, res) => {
         ma.id as maestro_id,
         ma.nombre as maestro_nombre,
         ma.email as maestro_email,
+        ma.foto_url as maestro_foto_url,
+        m.id as materia_id,
         m.nombre as materia_nombre,
         m.codigo as materia_codigo,
         m.creditos
@@ -349,13 +428,14 @@ app.get('/materias/detalles', authenticateToken, async (req, res) => {
         m.codigo as materia_codigo,
         m.creditos,
         COALESCE(MAX(ma.nombre), 'Sin asignar') as maestro_nombre,
-        COUNT(am.alumno_id) as total_alumnos,
+        MAX(ma.foto_url) as maestro_foto_url,
+        COUNT(DISTINCT am.alumno_id) as total_alumnos,
         COALESCE(ROUND(AVG(NULLIF(am.calificacion, 0))::numeric, 2), 0) as promedio_calificaciones
       FROM materias m
       LEFT JOIN maestro_materia mm ON mm.materia_id = m.id
       LEFT JOIN maestros ma ON ma.id = mm.maestro_id
       LEFT JOIN alumno_materia am ON am.materia_id = m.id
-      GROUP BY m.id
+      GROUP BY m.id, m.nombre, m.codigo, m.creditos
       ORDER BY m.nombre
     `);
     res.json(result.rows);
@@ -484,12 +564,13 @@ app.get('/alumnos/:id/calificaciones', authenticateToken, async (req, res) => {
         m.nombre as materia_nombre,
         m.codigo as materia_codigo,
         am.calificacion,
-        ma.nombre as maestro_nombre
+        am.maestro_id as maestro_id,
+        COALESCE(ma.nombre, 'Sin asignar') as maestro_nombre,
+        ma.foto_url as maestro_foto_url
       FROM alumnos a
       JOIN alumno_materia am ON a.id = am.alumno_id
       JOIN materias m ON am.materia_id = m.id
-      LEFT JOIN maestro_materia mm ON m.id = mm.materia_id
-      LEFT JOIN maestros ma ON mm.maestro_id = ma.id
+      LEFT JOIN maestros ma ON am.maestro_id = ma.id
       WHERE a.id = $1
       ORDER BY m.nombre
     `, [id]);
@@ -509,15 +590,38 @@ app.get('/materias/:id/alumnos', authenticateToken, async (req, res) => {
         a.nombre as alumno_nombre,
         a.grado,
         a.email as alumno_email,
+        a.foto_url as alumno_foto_url,
         am.calificacion,
-        ma.nombre as maestro_nombre
+        am.maestro_id as maestro_id,
+        COALESCE(ma.nombre, 'Sin asignar') as maestro_nombre,
+        ma.foto_url as maestro_foto_url
       FROM materias m
       JOIN alumno_materia am ON m.id = am.materia_id
       JOIN alumnos a ON am.alumno_id = a.id
-      LEFT JOIN maestro_materia mm ON m.id = mm.materia_id
-      LEFT JOIN maestros ma ON mm.maestro_id = ma.id
+      LEFT JOIN maestros ma ON am.maestro_id = ma.id
       WHERE m.id = $1
       ORDER BY a.nombre
+    `, [id]);
+    res.json(result.rows);
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// Obtener maestros que enseñan una materia específica
+app.get('/materias/:id/maestros', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(`
+      SELECT 
+        ma.id as maestro_id,
+        ma.nombre as maestro_nombre,
+        ma.email as maestro_email,
+        ma.foto_url as maestro_foto_url
+      FROM maestros ma
+      INNER JOIN maestro_materia mm ON ma.id = mm.maestro_id
+      WHERE mm.materia_id = $1
+      ORDER BY ma.nombre
     `, [id]);
     res.json(result.rows);
   } catch (error) {
@@ -597,7 +701,7 @@ app.delete('/maestros/:id/materias/:materiaId', authenticateToken, async (req, r
 app.post('/alumnos/:id/materias', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { materia_id, calificacion } = req.body;
+    const { materia_id, maestro_id, calificacion } = req.body;
     
     // Verificar que el alumno existe
     const alumnoCheck = await pool.query('SELECT id FROM alumnos WHERE id = $1', [id]);
@@ -611,28 +715,44 @@ app.post('/alumnos/:id/materias', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Materia no encontrada' });
     }
     
-    // Verificar que no existe ya la inscripción
+    // Si se especifica un maestro, verificar que existe y que enseña esa materia
+    if (maestro_id) {
+      const maestroCheck = await pool.query('SELECT id FROM maestros WHERE id = $1', [maestro_id]);
+      if (maestroCheck.rowCount === 0) {
+        return res.status(404).json({ message: 'Maestro no encontrado' });
+      }
+      
+      const maestroMateriaCheck = await pool.query(
+        'SELECT id FROM maestro_materia WHERE maestro_id = $1 AND materia_id = $2',
+        [maestro_id, materia_id]
+      );
+      if (maestroMateriaCheck.rowCount === 0) {
+        return res.status(400).json({ message: 'El maestro no enseña esta materia' });
+      }
+    }
+    
+    // Verificar que no existe ya la inscripción (única por alumno+materia+maestro)
     const existingInscription = await pool.query(
-      'SELECT id FROM alumno_materia WHERE alumno_id = $1 AND materia_id = $2',
-      [id, materia_id]
+      'SELECT id FROM alumno_materia WHERE alumno_id = $1 AND materia_id = $2 AND (maestro_id = $3 OR (maestro_id IS NULL AND $3 IS NULL))',
+      [id, materia_id, maestro_id || null]
     );
     if (existingInscription.rowCount > 0) {
-      return res.status(400).json({ message: 'El alumno ya está inscrito en esta materia' });
+      return res.status(400).json({ message: 'El alumno ya está inscrito en esta materia con este maestro' });
     }
     
     // Crear la inscripción
     const result = await pool.query(
-      'INSERT INTO alumno_materia(alumno_id, materia_id, calificacion) VALUES ($1, $2, $3) RETURNING *',
-      [Number(id), Number(materia_id), calificacion || null]
+      'INSERT INTO alumno_materia(alumno_id, materia_id, maestro_id, calificacion) VALUES ($1, $2, $3, $4) RETURNING *',
+      [Number(id), Number(materia_id), maestro_id ? Number(maestro_id) : null, calificacion || null]
     );
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
     if (error.code === '23505') {
-      return res.status(400).json({ message: 'El alumno ya está inscrito en esta materia' });
+      return res.status(400).json({ message: 'El alumno ya está inscrito en esta materia con este maestro' });
     }
     if (error.code === '23503') {
-      return res.status(400).json({ message: 'Alumno o materia no existen' });
+      return res.status(400).json({ message: 'Alumno, materia o maestro no existen' });
     }
     handleError(res, error);
   }

@@ -51,7 +51,7 @@ function Dashboard() {
         totalAlumnos: Number(res.data.totalAlumnos || 0),
         totalMaestros: Number(res.data.totalMaestros || 0),
         totalMaterias: Number(res.data.totalMaterias || 0),
-        promedioCalificaciones: Number(res.data.promedioCalificaciones || 0).toFixed ? Number(res.data.promedioCalificaciones || 0).toFixed(2) : res.data.promedioCalificaciones
+        promedioCalificaciones: Number(res.data.promedioCalificaciones || 0).toFixed(2)
       });
     } catch (error) {
       if (error.response?.status === 401) {
@@ -152,7 +152,7 @@ function Dashboard() {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+    <Container id="dashboard-section" maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" gutterBottom sx={{ color: '#192d63', fontWeight: 'bold', mb: 4 }}>
         Dashboard - Sistema Escolar UNACH
       </Typography>

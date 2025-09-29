@@ -72,6 +72,8 @@ function MateriasTable() {
       setNuevaMateria({ nombre: '', codigo: '', creditos: '' });
       fetchMaterias();
       showSnackbar('Materia agregada exitosamente');
+      // Disparar evento para actualizar otros componentes
+      window.dispatchEvent(new CustomEvent('materias-updated'));
     } catch (error) {
       showSnackbar('Error al agregar materia', 'error');
     }
@@ -98,6 +100,8 @@ function MateriasTable() {
       setEditingMateria(null);
       fetchMaterias();
       showSnackbar('Materia actualizada exitosamente');
+      // Disparar evento para actualizar otros componentes
+      window.dispatchEvent(new CustomEvent('materias-updated'));
     } catch (error) {
       showSnackbar('Error al actualizar materia', 'error');
     }
@@ -108,6 +112,8 @@ function MateriasTable() {
       await axios.delete(`/materias/${id}`);
       fetchMaterias();
       showSnackbar('Materia eliminada exitosamente');
+      // Disparar evento para actualizar otros componentes
+      window.dispatchEvent(new CustomEvent('materias-updated'));
     } catch (error) {
       showSnackbar('Error al eliminar materia', 'error');
     }
@@ -124,7 +130,7 @@ function MateriasTable() {
   );
 
   return (
-    <Box>
+    <Box id="materias-section">
       <Typography variant="h5" gutterBottom sx={{ color: '#192d63', fontWeight: 'bold', mb: 3 }}>
         Gestión de Materias
       </Typography>

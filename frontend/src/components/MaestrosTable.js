@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Table,
   TableBody,
@@ -15,24 +15,100 @@ import {
   TablePagination,
   Alert,
   Snackbar,
-  Typography
+  Typography,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  OutlinedInput
 } from '@mui/material';
 import axios from '../config/axios';
 
 function MaestrosTable() {
   const [maestros, setMaestros] = useState([]);
-  const [nuevoMaestro, setNuevoMaestro] = useState({ nombre: '', materia: '', email: '' });
+  const [materias, setMaterias] = useState([]);
+  const [relacionesMaestroMateria, setRelacionesMaestroMateria] = useState([]);
+  const [nuevoMaestro, setNuevoMaestro] = useState({ nombre: '', materia_id: '', email: '', foto_url: '' });
   const [editingMaestro, setEditingMaestro] = useState(null);
+  const [materiasSeleccionadas, setMateriasSeleccionadas] = useState([]);
   const [openEditDialog, setOpenEditDialog] = useState(false);
+  const fileInputRef = useRef(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const fileInputEditRef = useRef(null);
+  const [subiendoEdit, setSubiendoEdit] = useState(false);
+
+  const handleUploadFoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('foto', file);
+    setSubiendo(true);
+    try {
+      const { data } = await axios.post('/upload/maestros', form, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setNuevoMaestro((prev) => ({ ...prev, foto_url: data.url }));
+    } catch (err) {
+      // noop
+    } finally {
+      setSubiendo(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleUploadFotoEdit = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('foto', file);
+    setSubiendoEdit(true);
+    try {
+      const { data } = await axios.post('/upload/maestros', form, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setEditingMaestro((prev) => ({ ...prev, foto_url: data.url }));
+    } catch (err) {
+      // noop
+    } finally {
+      setSubiendoEdit(false);
+      if (fileInputEditRef.current) {
+        fileInputEditRef.current.value = '';
+      }
+    }
+  };
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
-  const fetchMaestros = async () => {
+  const fetchMaestros = useCallback(async () => {
     try {
       const res = await axios.get('/maestros');
       setMaestros(res.data);
+      
+      // Verificar si hay maestros con materias asignadas que no tienen relaciones
+      for (const maestro of res.data) {
+        if (maestro.materia && maestro.materia.trim() !== '') {
+          const materiaEncontrada = materias.find(m => m.nombre === maestro.materia);
+          if (materiaEncontrada) {
+            try {
+              // Intentar crear la relación si no existe
+              await axios.post(`/maestros/${maestro.id}/materias`, {
+                materia_id: materiaEncontrada.id
+              });
+              console.log(`✅ Relación creada para maestro ${maestro.nombre} con materia ${maestro.materia}`);
+            } catch (relError) {
+              // Si ya existe la relación, no es un error
+              if (relError.response?.status !== 400) {
+                console.warn(`⚠️ Error creando relación para maestro ${maestro.nombre}:`, relError);
+              }
+            }
+          }
+        }
+      }
     } catch (error) {
       if (error.response?.status === 401) {
         // Redirigir al login si no está autenticado
@@ -40,11 +116,54 @@ function MaestrosTable() {
       }
       console.error('Error fetching maestros:', error);
     }
-  };
+  }, [materias]);
+
+  const fetchMaterias = useCallback(async () => {
+    try {
+      const res = await axios.get('/materias');
+      setMaterias(res.data);
+    } catch (error) {
+      if (error.response?.status === 401) {
+        window.location.reload();
+      }
+      console.error('Error fetching materias:', error);
+    }
+  }, []);
+
+  const fetchRelacionesMaestroMateria = useCallback(async () => {
+    try {
+      const res = await axios.get('/maestros/materias');
+      setRelacionesMaestroMateria(res.data);
+    } catch (error) {
+      if (error.response?.status === 401) {
+        window.location.reload();
+      }
+      console.error('Error fetching relaciones maestro-materia:', error);
+    }
+  }, []);
 
   useEffect(() => {
-    fetchMaestros();
-  }, []);
+    const cargarDatos = async () => {
+      await fetchMaterias();
+      await fetchMaestros();
+      await fetchRelacionesMaestroMateria();
+    };
+    cargarDatos();
+  }, [fetchMaterias, fetchMaestros, fetchRelacionesMaestroMateria]);
+
+  // Escuchar eventos de actualización de relaciones
+  useEffect(() => {
+    const handleRelacionesUpdated = () => {
+      console.log('🔔 Evento relaciones-updated recibido en MaestrosTable');
+      fetchRelacionesMaestroMateria();
+    };
+
+    window.addEventListener('relaciones-updated', handleRelacionesUpdated);
+
+    return () => {
+      window.removeEventListener('relaciones-updated', handleRelacionesUpdated);
+    };
+  }, [fetchRelacionesMaestroMateria]);
 
   const validateForm = (maestro) => {
     if (!maestro.nombre.trim()) return 'El nombre es requerido';
@@ -57,6 +176,30 @@ function MaestrosTable() {
     setSnackbar({ open: true, message, severity });
   };
 
+  const getMateriasAsignadas = (maestroId) => {
+    // Buscar materias asignadas desde las relaciones
+    const materiasRelacionadas = relacionesMaestroMateria
+      .filter(rel => rel.maestro_id === maestroId)
+      .map(rel => rel.materia_nombre);
+    
+    return materiasRelacionadas;
+  };
+
+  const getMateriaDisplay = (maestro) => {
+    // Si el maestro tiene materia en el campo directo, usarla
+    if (maestro.materia && maestro.materia.trim() !== '') {
+      return maestro.materia;
+    }
+    
+    // Si no, buscar en las relaciones
+    const materiasAsignadas = getMateriasAsignadas(maestro.id);
+    if (materiasAsignadas.length > 0) {
+      return materiasAsignadas.join(', ');
+    }
+    
+    return '';
+  };
+
   const handleAddMaestro = async () => {
     const error = validateForm(nuevoMaestro);
     if (error) {
@@ -65,17 +208,55 @@ function MaestrosTable() {
     }
 
     try {
-      await axios.post('/maestros', nuevoMaestro);
-      setNuevoMaestro({ nombre: '', materia: '', email: '' });
-      fetchMaestros();
+      // Preparar los datos para enviar
+      const datosMaestro = {
+        nombre: nuevoMaestro.nombre,
+        email: nuevoMaestro.email,
+        foto_url: nuevoMaestro.foto_url,
+        materia: nuevoMaestro.materia_id ? materias.find(m => m.id === parseInt(nuevoMaestro.materia_id))?.nombre || '' : ''
+      };
+      
+      const response = await axios.post('/maestros', datosMaestro);
+      const maestroId = response.data.id;
+      
+      // Si se asignó una materia, crear la relación en maestro_materia
+      if (nuevoMaestro.materia_id) {
+        try {
+          await axios.post(`/maestros/${maestroId}/materias`, {
+            materia_id: parseInt(nuevoMaestro.materia_id)
+          });
+        } catch (relError) {
+          console.warn('Error creando relación maestro-materia:', relError);
+          // No mostramos error al usuario porque el maestro ya se creó exitosamente
+        }
+      }
+      
+      setNuevoMaestro({ nombre: '', materia_id: '', email: '', foto_url: '' });
+      await fetchMaestros();
+      await fetchRelacionesMaestroMateria();
       showSnackbar('Maestro agregado exitosamente');
+      // Disparar evento para actualizar otros componentes
+      console.log('🚀 Disparando eventos desde MaestrosTable - maestro agregado');
+      window.dispatchEvent(new CustomEvent('maestros-updated'));
+      window.dispatchEvent(new CustomEvent('relaciones-updated'));
     } catch (error) {
       showSnackbar('Error al agregar maestro', 'error');
     }
   };
 
   const handleEditMaestro = (maestro) => {
-    setEditingMaestro({ ...maestro });
+    // Obtener las materias asignadas desde las relaciones
+    const materiasAsignadas = getMateriasAsignadas(maestro.id);
+    const materiasIds = materiasAsignadas.map(materiaNombre => {
+      const materia = materias.find(m => m.nombre === materiaNombre);
+      return materia ? materia.id.toString() : null;
+    }).filter(Boolean);
+    
+    setEditingMaestro({ 
+      ...maestro, 
+      materia_id: '' // Ya no usamos este campo individual
+    });
+    setMateriasSeleccionadas(materiasIds);
     setOpenEditDialog(true);
   };
 
@@ -87,11 +268,56 @@ function MaestrosTable() {
     }
 
     try {
-      await axios.put(`/maestros/${editingMaestro.id}`, editingMaestro);
+      // Obtener las materias anteriores desde las relaciones
+      const materiasAnteriores = getMateriasAsignadas(editingMaestro.id);
+      const materiasAnterioresIds = materiasAnteriores.map(materiaNombre => {
+        const materia = materias.find(m => m.nombre === materiaNombre);
+        return materia ? materia.id : null;
+      }).filter(Boolean);
+      
+      // Preparar los datos para enviar (sin materia en el campo directo)
+      const datosMaestro = {
+        nombre: editingMaestro.nombre,
+        email: editingMaestro.email,
+        foto_url: editingMaestro.foto_url,
+        materia: '' // Ya no guardamos materia en el campo directo
+      };
+      
+      await axios.put(`/maestros/${editingMaestro.id}`, datosMaestro);
+      
+      // Obtener las nuevas materias seleccionadas
+      const nuevasMateriasIds = materiasSeleccionadas.map(id => parseInt(id));
+      
+      // Eliminar todas las relaciones anteriores
+      for (const materiaId of materiasAnterioresIds) {
+        try {
+          await axios.delete(`/maestros/${editingMaestro.id}/materias/${materiaId}`);
+        } catch (delError) {
+          console.warn('Error eliminando relación anterior:', delError);
+        }
+      }
+      
+      // Crear las nuevas relaciones
+      for (const materiaId of nuevasMateriasIds) {
+        try {
+          await axios.post(`/maestros/${editingMaestro.id}/materias`, {
+            materia_id: materiaId
+          });
+        } catch (relError) {
+          console.warn('Error creando nueva relación maestro-materia:', relError);
+        }
+      }
+      
       setOpenEditDialog(false);
       setEditingMaestro(null);
-      fetchMaestros();
+      setMateriasSeleccionadas([]);
+      await fetchMaestros();
+      await fetchRelacionesMaestroMateria();
       showSnackbar('Maestro actualizado exitosamente');
+      // Disparar evento para actualizar otros componentes
+      console.log('🚀 Disparando eventos desde MaestrosTable - maestro actualizado');
+      window.dispatchEvent(new CustomEvent('maestros-updated'));
+      window.dispatchEvent(new CustomEvent('relaciones-updated'));
     } catch (error) {
       showSnackbar('Error al actualizar maestro', 'error');
     }
@@ -100,17 +326,22 @@ function MaestrosTable() {
   const handleDeleteMaestro = async (id) => {
     try {
       await axios.delete(`/maestros/${id}`);
-      fetchMaestros();
+      await fetchMaestros();
+      await fetchRelacionesMaestroMateria();
       showSnackbar('Maestro eliminado exitosamente');
+      // Disparar evento para actualizar otros componentes
+      window.dispatchEvent(new CustomEvent('maestros-updated'));
+      window.dispatchEvent(new CustomEvent('relaciones-updated'));
     } catch (error) {
       showSnackbar('Error al eliminar maestro', 'error');
     }
   };
 
-  const filteredMaestros = maestros.filter(maestro =>
-    maestro.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    maestro.materia.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredMaestros = maestros.filter(maestro => {
+    const materiaDisplay = getMateriaDisplay(maestro);
+    return maestro.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           materiaDisplay.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   const paginatedMaestros = filteredMaestros.slice(
     page * rowsPerPage,
@@ -118,7 +349,7 @@ function MaestrosTable() {
   );
 
   return (
-    <Box>
+    <Box id="maestros-section">
       <Typography variant="h5" gutterBottom sx={{ color: '#192d63', fontWeight: 'bold', mb: 3 }}>
         Gestión de Maestros
       </Typography>
@@ -131,17 +362,36 @@ function MaestrosTable() {
           onChange={(e) => setNuevoMaestro({ ...nuevoMaestro, nombre: e.target.value })}
           required
         />
-        <TextField 
-          label="Materia (opcional)" 
-          value={nuevoMaestro.materia} 
-          onChange={(e) => setNuevoMaestro({ ...nuevoMaestro, materia: e.target.value })}
-        />
+        <FormControl sx={{ minWidth: 200 }}>
+          <InputLabel>Materia (opcional)</InputLabel>
+          <Select
+            value={nuevoMaestro.materia_id}
+            onChange={(e) => setNuevoMaestro({ ...nuevoMaestro, materia_id: e.target.value })}
+            label="Materia (opcional)"
+          >
+            <MenuItem value="">
+              <em>Sin materia específica</em>
+            </MenuItem>
+            {materias.map((materia) => (
+              <MenuItem key={materia.id} value={materia.id.toString()}>
+                {materia.nombre} ({materia.codigo})
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
         <TextField 
           label="Email" 
           value={nuevoMaestro.email} 
           onChange={(e) => setNuevoMaestro({ ...nuevoMaestro, email: e.target.value })}
           required
         />
+        <Button component="label" variant="outlined" disabled={subiendo}>
+          {subiendo ? 'Subiendo...' : (nuevoMaestro.foto_url ? 'Cambiar foto' : 'Subir foto')}
+          <input ref={fileInputRef} type="file" hidden accept="image/png,image/jpeg" onChange={handleUploadFoto} />
+        </Button>
+        {nuevoMaestro.foto_url && (
+          <img src={`${axios.defaults.baseURL}${nuevoMaestro.foto_url}`} alt="Foto maestro" style={{ height: 48, borderRadius: 4 }} />
+        )}
         <Button variant="contained" onClick={handleAddMaestro} sx={{ bgcolor: '#192d63' }}>
           Agregar Maestro
         </Button>
@@ -165,6 +415,7 @@ function MaestrosTable() {
             <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Nombre</TableCell>
             <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Materia</TableCell>
             <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Email</TableCell>
+            <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Foto</TableCell>
             <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Acciones</TableCell>
           </TableRow>
         </TableHead>
@@ -173,8 +424,13 @@ function MaestrosTable() {
             <TableRow key={m.id} hover>
               <TableCell>{m.id}</TableCell>
               <TableCell>{m.nombre}</TableCell>
-              <TableCell>{m.materia}</TableCell>
+              <TableCell>{getMateriaDisplay(m)}</TableCell>
               <TableCell>{m.email}</TableCell>
+              <TableCell>
+                {m.foto_url ? (
+                  <img src={`${axios.defaults.baseURL}${m.foto_url}`} alt="maestro" style={{ height: 36, borderRadius: 4 }} />
+                ) : '-'}
+              </TableCell>
               <TableCell>
                 <Button 
                   variant="outlined" 
@@ -212,7 +468,11 @@ function MaestrosTable() {
       />
 
       {/* Modal de edición */}
-      <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={openEditDialog} onClose={() => {
+        setOpenEditDialog(false);
+        setMateriasSeleccionadas([]);
+        setEditingMaestro(null);
+      }} maxWidth="sm" fullWidth>
         <DialogTitle>Editar Maestro</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
@@ -222,18 +482,48 @@ function MaestrosTable() {
               onChange={(e) => setEditingMaestro({ ...editingMaestro, nombre: e.target.value })}
               fullWidth
             />
-            <TextField
-              label="Materia"
-              value={editingMaestro?.materia || ''}
-              onChange={(e) => setEditingMaestro({ ...editingMaestro, materia: e.target.value })}
-              fullWidth
-            />
+            <FormControl fullWidth>
+              <InputLabel>Materias</InputLabel>
+              <Select
+                multiple
+                value={materiasSeleccionadas}
+                onChange={(e) => setMateriasSeleccionadas(e.target.value)}
+                input={<OutlinedInput label="Materias" />}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {selected.map((value) => {
+                      const materia = materias.find(m => m.id.toString() === value);
+                      return (
+                        <Chip 
+                          key={value} 
+                          label={materia ? `${materia.nombre} (${materia.codigo})` : value}
+                          size="small"
+                        />
+                      );
+                    })}
+                  </Box>
+                )}
+              >
+                {materias.map((materia) => (
+                  <MenuItem key={materia.id} value={materia.id.toString()}>
+                    {materia.nombre} ({materia.codigo})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <TextField
               label="Email"
               value={editingMaestro?.email || ''}
               onChange={(e) => setEditingMaestro({ ...editingMaestro, email: e.target.value })}
               fullWidth
             />
+            <Button component="label" variant="outlined" disabled={subiendoEdit}>
+              {subiendoEdit ? 'Subiendo...' : (editingMaestro?.foto_url ? 'Cambiar foto' : 'Subir foto')}
+              <input ref={fileInputEditRef} type="file" hidden accept="image/png,image/jpeg" onChange={handleUploadFotoEdit} />
+            </Button>
+            {editingMaestro?.foto_url && (
+              <img src={`${axios.defaults.baseURL}${editingMaestro.foto_url}`} alt="Foto maestro" style={{ height: 48, borderRadius: 4 }} />
+            )}
           </Box>
         </DialogContent>
         <DialogActions>

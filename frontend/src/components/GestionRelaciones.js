@@ -51,7 +51,9 @@ const GestionRelaciones = () => {
   const [selectedMaestro, setSelectedMaestro] = useState('');
   const [selectedMateria, setSelectedMateria] = useState('');
   const [selectedAlumno, setSelectedAlumno] = useState('');
+  const [selectedMaestroAlumno, setSelectedMaestroAlumno] = useState('');
   const [calificacion, setCalificacion] = useState('');
+  const [maestrosMateria, setMaestrosMateria] = useState([]);
 
   // Estados para diálogos
   const [openAsignarMateria, setOpenAsignarMateria] = useState(false);
@@ -63,67 +65,49 @@ const GestionRelaciones = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   const cargarDatos = useCallback(async () => {
-    console.log('=== INICIANDO CARGA DE DATOS ===');
-    
     try {
-      console.log('Cargando datos básicos...');
+      console.log('🔄 Cargando datos en GestionRelaciones...');
       const [maestrosRes, materiasRes, alumnosRes] = await Promise.all([
         axios.get('/maestros'),
         axios.get('/materias'),
         axios.get('/alumnos')
       ]);
 
-      console.log('Datos básicos cargados:', {
-        maestros: maestrosRes.data,
-        materias: materiasRes.data,
-        alumnos: alumnosRes.data
-      });
-
       setMaestros(maestrosRes.data);
       setMaterias(materiasRes.data);
       setAlumnos(alumnosRes.data);
 
+      console.log('👥 Maestros cargados:', maestrosRes.data);
+      console.log('📚 Materias cargadas:', materiasRes.data);
+
       // Intentar cargar relaciones, si falla es porque las tablas no existen
-      console.log('Intentando cargar relaciones...');
       try {
         const [relacionesRes, alumnosMateriasRes] = await Promise.all([
           axios.get('/maestros/materias'),
           axios.get('/alumnos/materias')
         ]);
         
-        console.log('Relaciones cargadas exitosamente:', {
-          relacionesMaestro: relacionesRes.data,
-          relacionesAlumno: alumnosMateriasRes.data
-        });
+        console.log('📊 Relaciones maestro-materia cargadas:', relacionesRes.data);
+        console.log('📊 Estructura de una relación:', relacionesRes.data[0]);
+        console.log('📊 Relaciones alumno-materia cargadas:', alumnosMateriasRes.data);
         
         setRelacionesMaestroMateria(relacionesRes.data);
         setRelacionesAlumnoMateria(alumnosMateriasRes.data);
-        
-        console.log('Datos cargados:', {
-          maestros: maestrosRes.data.length,
-          materias: materiasRes.data.length,
-          alumnos: alumnosRes.data.length,
-          relacionesMaestro: relacionesRes.data.length,
-          relacionesAlumno: alumnosMateriasRes.data.length
-        });
       } catch (relError) {
         console.error('Error cargando relaciones:', relError);
-        console.log('Tablas de relaciones no existen o hay error, inicializando vacías');
+        console.log('⚠️ Las tablas de relaciones no existen o hay un error. Creando tablas...');
         setRelacionesMaestroMateria([]);
         setRelacionesAlumnoMateria([]);
       }
     } catch (error) {
       console.error('Error al cargar datos:', error);
       if (error.response?.status === 401) {
-        console.log('Error 401 - Token inválido, recargando página');
         window.location.reload();
       } else {
         console.error('Error detallado:', error.response?.data || error.message);
         showSnackbar('Error al cargar los datos. Verifica que el servidor esté funcionando.', 'error');
       }
     }
-    
-    console.log('=== FIN CARGA DE DATOS ===');
   }, []);
 
   // Cargar datos al montar el componente
@@ -131,8 +115,48 @@ const GestionRelaciones = () => {
     cargarDatos();
   }, [cargarDatos]);
 
+  // Escuchar eventos de actualización de maestros
+  useEffect(() => {
+    const handleMaestrosUpdated = () => {
+      console.log('🔔 Evento maestros-updated recibido en GestionRelaciones');
+      cargarDatos();
+    };
+
+    const handleRelacionesUpdated = () => {
+      console.log('🔔 Evento relaciones-updated recibido en GestionRelaciones');
+      cargarDatos();
+    };
+
+    window.addEventListener('maestros-updated', handleMaestrosUpdated);
+    window.addEventListener('materias-updated', handleMaestrosUpdated);
+    window.addEventListener('alumnos-updated', handleMaestrosUpdated);
+    window.addEventListener('relaciones-updated', handleRelacionesUpdated);
+
+    return () => {
+      window.removeEventListener('maestros-updated', handleMaestrosUpdated);
+      window.removeEventListener('materias-updated', handleMaestrosUpdated);
+      window.removeEventListener('alumnos-updated', handleMaestrosUpdated);
+      window.removeEventListener('relaciones-updated', handleRelacionesUpdated);
+    };
+  }, [cargarDatos]);
+
   const showSnackbar = (message, severity = 'success') => {
     setSnackbar({ open: true, message, severity });
+  };
+
+  const cargarMaestrosMateria = async (materiaId) => {
+    if (!materiaId) {
+      setMaestrosMateria([]);
+      return;
+    }
+    
+    try {
+      const response = await axios.get(`/materias/${materiaId}/maestros`);
+      setMaestrosMateria(response.data);
+    } catch (error) {
+      console.error('Error cargando maestros de la materia:', error);
+      setMaestrosMateria([]);
+    }
   };
 
   const crearTablasRelaciones = async () => {
@@ -143,6 +167,60 @@ const GestionRelaciones = () => {
     } catch (error) {
       console.error('Error creando tablas:', error);
       showSnackbar('Error al crear las tablas de relaciones', 'error');
+    }
+  };
+
+  const sincronizarRelaciones = async () => {
+    try {
+      console.log('🔄 Sincronizando relaciones existentes...');
+      
+      // Para cada maestro que tenga una materia asignada, crear la relación
+      for (const maestro of maestros) {
+        if (maestro.materia && maestro.materia.trim() !== '') {
+          const materiaEncontrada = materias.find(m => m.nombre === maestro.materia);
+          if (materiaEncontrada) {
+            try {
+              await axios.post(`/maestros/${maestro.id}/materias`, {
+                materia_id: materiaEncontrada.id
+              });
+              console.log(`✅ Relación sincronizada: ${maestro.nombre} -> ${maestro.materia}`);
+            } catch (relError) {
+              // Si ya existe la relación, no es un error
+              if (relError.response?.status !== 400) {
+                console.warn(`⚠️ Error sincronizando relación para ${maestro.nombre}:`, relError);
+              }
+            }
+          }
+        }
+      }
+      
+      showSnackbar('Relaciones sincronizadas exitosamente');
+      cargarDatos(); // Recargar datos
+    } catch (error) {
+      console.error('Error sincronizando relaciones:', error);
+      showSnackbar('Error al sincronizar las relaciones', 'error');
+    }
+  };
+
+  const verificarTablas = async () => {
+    try {
+      console.log('🔍 Verificando estado de las tablas...');
+      
+      // Intentar hacer una consulta simple a las tablas de relaciones
+      const [maestrosRes, materiasRes] = await Promise.all([
+        axios.get('/maestros/materias'),
+        axios.get('/alumnos/materias')
+      ]);
+      
+      console.log('✅ Tablas de relaciones existen y funcionan correctamente');
+      console.log('📊 Relaciones maestro-materia:', maestrosRes.data.length);
+      console.log('📊 Relaciones alumno-materia:', materiasRes.data.length);
+      
+      showSnackbar('Las tablas de relaciones están funcionando correctamente');
+    } catch (error) {
+      console.error('❌ Error verificando tablas:', error);
+      console.error('❌ Detalles:', error.response?.data);
+      showSnackbar('Error: Las tablas de relaciones no existen o no funcionan', 'error');
     }
   };
 
@@ -179,6 +257,7 @@ const GestionRelaciones = () => {
     try {
       await axios.post(`/alumnos/${Number(selectedAlumno)}/materias`, {
         materia_id: Number(selectedMateria),
+        maestro_id: selectedMaestroAlumno ? Number(selectedMaestroAlumno) : null,
         calificacion: calificacion || null
       });
 
@@ -188,7 +267,9 @@ const GestionRelaciones = () => {
       setOpenInscribirAlumno(false);
       setSelectedAlumno('');
       setSelectedMateria('');
+      setSelectedMaestroAlumno('');
       setCalificacion('');
+      setMaestrosMateria([]);
     } catch (error) {
       console.error('Error al inscribir alumno:', error);
       const msg = error.response?.data?.message || error.response?.data?.error || 'Error al inscribir alumno';
@@ -221,13 +302,17 @@ const GestionRelaciones = () => {
 
   const handleEliminarRelacionMaestro = async (maestroId, materiaId) => {
     try {
-      await axios.delete(`/maestros/${maestroId}/materias/${materiaId}`);
+      console.log(`🗑️ Intentando eliminar relación: maestro ${maestroId}, materia ${materiaId}`);
+      const response = await axios.delete(`/maestros/${maestroId}/materias/${materiaId}`);
+      console.log('✅ Relación eliminada exitosamente:', response.data);
       showSnackbar('Relación eliminada exitosamente');
       cargarDatos();
       window.dispatchEvent(new CustomEvent('relaciones-updated'));
     } catch (error) {
-      console.error('Error al eliminar relación:', error);
-      showSnackbar('Error al eliminar relación', 'error');
+      console.error('❌ Error al eliminar relación:', error);
+      console.error('❌ Detalles del error:', error.response?.data);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Error al eliminar relación';
+      showSnackbar(errorMessage, 'error');
     }
   };
 
@@ -257,57 +342,63 @@ const GestionRelaciones = () => {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box id="gestion-relaciones-section" sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom sx={{ color: '#192d63', fontWeight: 'bold' }}>
         <AssignmentIcon sx={{ mr: 2, verticalAlign: 'middle' }} />
         Gestión de Relaciones
       </Typography>
 
-      {/* Información de debugging */}
-      <Box sx={{ mb: 3, p: 2, bgcolor: '#e3f2fd', borderRadius: 2 }}>
-        <Typography variant="h6" sx={{ color: '#1976d2', mb: 1 }}>
-          🔍 Información de Debug
-        </Typography>
-        <Typography variant="body2" sx={{ mb: 1 }}>
-          <strong>Maestros cargados:</strong> {maestros.length}
-        </Typography>
-        <Typography variant="body2" sx={{ mb: 1 }}>
-          <strong>Materias cargadas:</strong> {materias.length}
-        </Typography>
-        <Typography variant="body2" sx={{ mb: 1 }}>
-          <strong>Alumnos cargados:</strong> {alumnos.length}
-        </Typography>
-        <Typography variant="body2" sx={{ mb: 1 }}>
-          <strong>Relaciones maestro-materia:</strong> {relacionesMaestroMateria.length}
-        </Typography>
-        <Typography variant="body2" sx={{ mb: 1 }}>
-          <strong>Relaciones alumno-materia:</strong> {relacionesAlumnoMateria.length}
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Abre la consola del navegador (F12) para ver logs detallados
-        </Typography>
-      </Box>
 
-      {/* Botón para crear tablas si no existen */}
+      {/* Botones de configuración */}
       {(maestros.length > 0 && materias.length > 0 && alumnos.length > 0) && (
         <Box sx={{ mb: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Si es la primera vez que usas esta funcionalidad, necesitas crear las tablas de relaciones:
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Configuración de relaciones:
           </Typography>
-          <Button
-            variant="outlined"
-            onClick={crearTablasRelaciones}
-            sx={{ 
-              borderColor: '#192d63',
-              color: '#192d63',
-              '&:hover': { 
-                borderColor: '#0f1a42',
-                backgroundColor: 'rgba(25, 45, 99, 0.04)'
-              }
-            }}
-          >
-            Crear Tablas de Relaciones
-          </Button>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              onClick={crearTablasRelaciones}
+              sx={{ 
+                borderColor: '#192d63',
+                color: '#192d63',
+                '&:hover': { 
+                  borderColor: '#0f1a42',
+                  backgroundColor: 'rgba(25, 45, 99, 0.04)'
+                }
+              }}
+            >
+              Crear Tablas de Relaciones
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={sincronizarRelaciones}
+              sx={{ 
+                borderColor: '#28a745',
+                color: '#28a745',
+                '&:hover': { 
+                  borderColor: '#1e7e34',
+                  backgroundColor: 'rgba(40, 167, 69, 0.04)'
+                }
+              }}
+            >
+              Sincronizar Relaciones Existentes
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={verificarTablas}
+              sx={{ 
+                borderColor: '#17a2b8',
+                color: '#17a2b8',
+                '&:hover': { 
+                  borderColor: '#138496',
+                  backgroundColor: 'rgba(23, 162, 184, 0.04)'
+                }
+              }}
+            >
+              Verificar Estado de Tablas
+            </Button>
+          </Box>
         </Box>
       )}
 
@@ -409,6 +500,7 @@ const GestionRelaciones = () => {
                     <TableRow>
                       <TableCell>Alumno</TableCell>
                       <TableCell>Materia</TableCell>
+                      <TableCell>Maestro</TableCell>
                       <TableCell>Calificación</TableCell>
                       <TableCell>Acciones</TableCell>
                     </TableRow>
@@ -416,7 +508,7 @@ const GestionRelaciones = () => {
                   <TableBody>
                     {relacionesAlumnoMateria.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} align="center" sx={{ py: 4 }}>
+                        <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
                           <Typography variant="body2" color="text.secondary">
                             No hay alumnos inscritos en materias aún.
                             <br />
@@ -429,6 +521,7 @@ const GestionRelaciones = () => {
                         <TableRow key={index}>
                           <TableCell>{relacion.alumno_nombre}</TableCell>
                           <TableCell>{relacion.materia_nombre}</TableCell>
+                          <TableCell>{relacion.maestro_nombre || 'Sin asignar'}</TableCell>
                           <TableCell>
                             <Chip
                               label={relacion.calificacion ? `${relacion.calificacion}` : 'Sin calificar'}
@@ -496,6 +589,8 @@ const GestionRelaciones = () => {
               ))}
             </Select>
           </FormControl>
+
+          
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenAsignarMateria(false)}>Cancelar</Button>
@@ -525,7 +620,11 @@ const GestionRelaciones = () => {
             <InputLabel>Seleccionar Materia</InputLabel>
             <Select
               value={selectedMateria}
-              onChange={(e) => setSelectedMateria(e.target.value)}
+              onChange={(e) => {
+                setSelectedMateria(e.target.value);
+                setSelectedMaestroAlumno(''); // Limpiar maestro seleccionado
+                cargarMaestrosMateria(e.target.value);
+              }}
             >
               {materias.map((materia) => (
                 <MenuItem key={materia.id} value={materia.id}>
@@ -534,6 +633,31 @@ const GestionRelaciones = () => {
               ))}
             </Select>
           </FormControl>
+
+          {selectedMateria && maestrosMateria.length > 0 && (
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Seleccionar Maestro (opcional)</InputLabel>
+              <Select
+                value={selectedMaestroAlumno}
+                onChange={(e) => setSelectedMaestroAlumno(e.target.value)}
+              >
+                <MenuItem value="">
+                  <em>Sin maestro específico</em>
+                </MenuItem>
+                {maestrosMateria.map((maestro) => (
+                  <MenuItem key={maestro.maestro_id} value={maestro.maestro_id}>
+                    {maestro.maestro_nombre}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {selectedMateria && maestrosMateria.length === 0 && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Esta materia no tiene maestros asignados aún. El alumno se inscribirá sin maestro específico.
+            </Alert>
+          )}
 
           <TextField
             fullWidth
@@ -547,7 +671,14 @@ const GestionRelaciones = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenInscribirAlumno(false)}>Cancelar</Button>
+          <Button onClick={() => {
+            setOpenInscribirAlumno(false);
+            setSelectedAlumno('');
+            setSelectedMateria('');
+            setSelectedMaestroAlumno('');
+            setCalificacion('');
+            setMaestrosMateria([]);
+          }}>Cancelar</Button>
           <Button onClick={handleInscribirAlumno} variant="contained">Inscribir</Button>
         </DialogActions>
       </Dialog>

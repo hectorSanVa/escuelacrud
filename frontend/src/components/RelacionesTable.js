@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -38,7 +38,7 @@ function RelacionesTable() {
   const [detailColumns, setDetailColumns] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const fetchAlumnosCompleto = async () => {
+  const fetchAlumnosCompleto = useCallback(async () => {
     try {
       setLoading(true);
       const response = await axios.get('/alumnos/materias');
@@ -52,9 +52,9 @@ function RelacionesTable() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchMaestrosCompleto = async () => {
+  const fetchMaestrosCompleto = useCallback(async () => {
     try {
       setLoading(true);
       const response = await axios.get('/maestros/materias');
@@ -68,9 +68,9 @@ function RelacionesTable() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchMateriasCompleto = async () => {
+  const fetchMateriasCompleto = useCallback(async () => {
     try {
       setLoading(true);
       const response = await axios.get('/materias/detalles');
@@ -84,7 +84,7 @@ function RelacionesTable() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Abrir detalle de Alumno
   const openAlumnoDetalle = async (alumnoId, alumnoNombre) => {
@@ -92,12 +92,15 @@ function RelacionesTable() {
       setDetailLoading(true);
       setDetailTitle(`Detalle de alumno: ${alumnoNombre}`);
       const res = await axios.get(`/alumnos/${alumnoId}/calificaciones`);
-      setDetailColumns(['Materia', 'Código', 'Calificación', 'Maestro']);
+      setDetailColumns(['Materia', 'Código', 'Calificación', 'Maestro', 'Foto']);
       const rows = res.data.map(r => ({
         Materia: r.materia_nombre || '-',
         Código: r.materia_codigo || '-',
         Calificación: r.calificacion || '-',
-        Maestro: r.maestro_nombre || 'Sin asignar'
+        Maestro: r.maestro_nombre || 'Sin asignar',
+        Foto: r.maestro_foto_url ? (
+          <img src={`${axios.defaults.baseURL}${r.maestro_foto_url}`} alt="maestro" style={{ height: 32, borderRadius: 4 }} />
+        ) : '-'
       }));
       setDetailRows(rows);
       setDetailOpen(true);
@@ -114,17 +117,43 @@ function RelacionesTable() {
       setDetailLoading(true);
       setDetailTitle(`Detalle de materia: ${materiaNombre}`);
       const res = await axios.get(`/materias/${materiaId}/alumnos`);
-      setDetailColumns(['Alumno', 'Grado', 'Email', 'Calificación', 'Maestro']);
-      const rows = res.data.map(r => ({
-        Alumno: r.alumno_nombre || '-',
-        Grado: r.grado || '-',
-        Email: r.alumno_email || '-',
-        Calificación: r.calificacion || '-',
-        Maestro: r.maestro_nombre || 'Sin asignar'
-      }));
+      setDetailColumns(['Alumno', 'Grado', 'Email', 'Calificación', 'Maestros', 'Foto']);
+
+      const rows = res.data.map(r => {
+        // Para cada alumno, buscar su maestro específico asignado
+        let maestroAsignado = 'Sin asignar';
+        
+        // Buscar en las relaciones alumno-materia si hay un maestro específico asignado
+        if (r.maestro_id && r.maestro_nombre) {
+          maestroAsignado = r.maestro_nombre;
+        } else {
+          // Si no hay maestro específico, buscar en las relaciones maestro-materia
+          const maestrosDeMateria = maestrosCompleto
+            .filter(m => m.materia_id === materiaId)
+            .map(m => m.maestro_nombre)
+            .filter(Boolean);
+          
+          if (maestrosDeMateria.length > 0) {
+            maestroAsignado = Array.from(new Set(maestrosDeMateria)).join(', ');
+          }
+        }
+
+        return {
+          Alumno: r.alumno_nombre || '-',
+          Grado: r.grado || '-',
+          Email: r.alumno_email || '-',
+          Calificación: r.calificacion || '-',
+          Maestros: maestroAsignado,
+          Foto: r.alumno_foto_url ? (
+            <img src={`${axios.defaults.baseURL}${r.alumno_foto_url}`} alt="alumno" style={{ height: 32, borderRadius: 4 }} />
+          ) : '-'
+        };
+      });
+      
       setDetailRows(rows);
       setDetailOpen(true);
     } catch (e) {
+      console.error('Error al cargar detalle de materia:', e);
       setError('No fue posible cargar el detalle de la materia');
     } finally {
       setDetailLoading(false);
@@ -134,13 +163,16 @@ function RelacionesTable() {
   // Abrir detalle de Maestro (filtra relaciones ya cargadas)
   const openMaestroDetalle = (maestroId, maestroNombre) => {
     setDetailTitle(`Detalle de maestro: ${maestroNombre}`);
-    setDetailColumns(['Materia', 'Código', 'Créditos']);
+    setDetailColumns(['Materia', 'Código', 'Créditos', 'Foto']);
     const rows = maestrosCompleto
       .filter(r => r.maestro_id === maestroId)
       .map(r => ({
         Materia: r.materia_nombre || '-',
         Código: r.materia_codigo || '-',
-        'Créditos': r.creditos || '-'
+        'Créditos': r.creditos || '-',
+        Foto: r.maestro_foto_url ? (
+          <img src={`${axios.defaults.baseURL}${r.maestro_foto_url}`} alt="maestro" style={{ height: 32, borderRadius: 4 }} />
+        ) : '-'
       }));
     setDetailRows(rows);
     setDetailOpen(true);
@@ -154,7 +186,7 @@ function RelacionesTable() {
       if (activeTab === 2) await fetchMateriasCompleto();
     };
     run();
-  }, [activeTab]);
+  }, [activeTab, fetchAlumnosCompleto, fetchMaestrosCompleto, fetchMateriasCompleto]);
 
   // Refrescar automáticamente cuando se actualicen relaciones
   useEffect(() => {
@@ -164,8 +196,10 @@ function RelacionesTable() {
       if (activeTab === 2) fetchMateriasCompleto();
     };
     window.addEventListener('relaciones-updated', refresh);
-    return () => window.removeEventListener('relaciones-updated', refresh);
-  }, [activeTab]);
+    return () => {
+      window.removeEventListener('relaciones-updated', refresh);
+    };
+  }, [activeTab, fetchAlumnosCompleto, fetchMaestrosCompleto, fetchMateriasCompleto]);
 
   // Botón manual para refrescar (por si el usuario lo requiere)
 
@@ -182,12 +216,14 @@ function RelacionesTable() {
           <TableHead>
             <TableRow sx={{ bgcolor: '#192d63' }}>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Alumno</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Foto</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Grado</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Materia</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Código</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Créditos</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Calificación</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Maestro</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Foto</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Acciones</TableCell>
             </TableRow>
           </TableHead>
@@ -195,6 +231,11 @@ function RelacionesTable() {
             {alumnosCompleto.map((row, index) => (
               <TableRow key={index} hover>
                 <TableCell>{row.alumno_nombre}</TableCell>
+                <TableCell>
+                  {row.alumno_foto_url ? (
+                    <img src={`${axios.defaults.baseURL}${row.alumno_foto_url}`} alt="alumno" style={{ height: 36, borderRadius: 4 }} />
+                  ) : '-'}
+                </TableCell>
                 <TableCell>{row.grado}</TableCell>
                 <TableCell>{row.materia_nombre || 'Sin materia'}</TableCell>
                 <TableCell>{row.materia_codigo || '-'}</TableCell>
@@ -211,6 +252,11 @@ function RelacionesTable() {
                   )}
                 </TableCell>
                 <TableCell>{row.maestro_nombre || 'Sin asignar'}</TableCell>
+                <TableCell>
+                  {row.maestro_foto_url ? (
+                    <img src={`${axios.defaults.baseURL}${row.maestro_foto_url}`} alt="maestro" style={{ height: 36, borderRadius: 4 }} />
+                  ) : '-'}
+                </TableCell>
                 <TableCell>
                   <Button size="small" variant="outlined" onClick={() => openAlumnoDetalle(row.alumno_id, row.alumno_nombre)}>
                     Ver detalle
@@ -237,6 +283,7 @@ function RelacionesTable() {
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Materia</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Código</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Créditos</TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Foto</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Acciones</TableCell>
             </TableRow>
           </TableHead>
@@ -248,6 +295,11 @@ function RelacionesTable() {
                 <TableCell>{row.materia_nombre || 'Sin materia'}</TableCell>
                 <TableCell>{row.materia_codigo || '-'}</TableCell>
                 <TableCell>{row.creditos || '-'}</TableCell>
+                <TableCell>
+                  {row.maestro_foto_url ? (
+                    <img src={`${axios.defaults.baseURL}${row.maestro_foto_url}`} alt="maestro" style={{ height: 36, borderRadius: 4 }} />
+                  ) : '-'}
+                </TableCell>
                 <TableCell>
                   <Button size="small" variant="outlined" onClick={() => openMaestroDetalle(row.maestro_id, row.maestro_nombre)}>
                     Ver detalle
@@ -272,7 +324,6 @@ function RelacionesTable() {
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Materia</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Código</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Créditos</TableCell>
-              <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Maestro</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Total Alumnos</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Promedio</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Acciones</TableCell>
@@ -284,7 +335,6 @@ function RelacionesTable() {
                 <TableCell>{row.materia_nombre}</TableCell>
                 <TableCell>{row.materia_codigo}</TableCell>
                 <TableCell>{row.creditos}</TableCell>
-                <TableCell>{row.maestro_nombre || 'Sin asignar'}</TableCell>
                 <TableCell>
                   <Chip 
                     label={row.total_alumnos || 0} 
@@ -362,7 +412,9 @@ function RelacionesTable() {
                   {detailRows.map((r, idx) => (
                     <TableRow key={idx}>
                       {detailColumns.map((c) => (
-                        <TableCell key={`${idx}-${c}`}>{r[c]}</TableCell>
+                        <TableCell key={`${idx}-${c}`}>
+                          {typeof r[c] === 'object' ? r[c] : r[c]}
+                        </TableCell>
                       ))}
                     </TableRow>
                   ))}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { 
   Table, 
   TableBody, 
@@ -77,13 +77,57 @@ function App() {
   const { user, login, logout, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [alumnos, setAlumnos] = useState([]);
-  const [nuevoAlumno, setNuevoAlumno] = useState({ nombre: '', grado: '', maestro_id: '', email: '' });
+  const [nuevoAlumno, setNuevoAlumno] = useState({ nombre: '', grado: '', maestro_id: '', email: '', foto_url: '' });
   const [editingAlumno, setEditingAlumno] = useState(null);
   const [openEditDialog, setOpenEditDialog] = useState(false);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const uploadInputNuevoRef = useRef(null);
+  const uploadInputEditRef = useRef(null);
+  const [subiendoNuevo, setSubiendoNuevo] = useState(false);
+  const [subiendoEdit, setSubiendoEdit] = useState(false);
+
+  const handleUploadAlumnoNuevo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('foto', file);
+    setSubiendoNuevo(true);
+    try {
+      const { data } = await axios.post('/upload/alumnos', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setNuevoAlumno((prev) => ({ ...prev, foto_url: data.url }));
+      showSnackbar('Foto subida');
+    } catch (_) {
+      showSnackbar('Error al subir foto', 'error');
+    } finally {
+      setSubiendoNuevo(false);
+      if (uploadInputNuevoRef.current) {
+        uploadInputNuevoRef.current.value = '';
+      }
+    }
+  };
+
+  const handleUploadAlumnoEdit = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('foto', file);
+    setSubiendoEdit(true);
+    try {
+      const { data } = await axios.post('/upload/alumnos', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setEditingAlumno((prev) => ({ ...prev, foto_url: data.url }));
+      showSnackbar('Foto subida');
+    } catch (_) {
+      showSnackbar('Error al subir foto', 'error');
+    } finally {
+      setSubiendoEdit(false);
+      if (uploadInputEditRef.current) {
+        uploadInputEditRef.current.value = '';
+      }
+    }
+  };
 
   const fetchAlumnos = useCallback(async () => {
     try {
@@ -124,11 +168,14 @@ function App() {
       await axios.post('/alumnos', {
         ...nuevoAlumno,
         grado: Number(nuevoAlumno.grado),
-        maestro_id: nuevoAlumno.maestro_id ? Number(nuevoAlumno.maestro_id) : null
+        maestro_id: nuevoAlumno.maestro_id ? Number(nuevoAlumno.maestro_id) : null,
+        foto_url: nuevoAlumno.foto_url || null
       });
-      setNuevoAlumno({ nombre: '', grado: '', maestro_id: '', email: '' });
+      setNuevoAlumno({ nombre: '', grado: '', maestro_id: '', email: '', foto_url: '' });
       fetchAlumnos();
       showSnackbar('Alumno agregado exitosamente');
+      // Disparar evento para actualizar otros componentes
+      window.dispatchEvent(new CustomEvent('alumnos-updated'));
     } catch (error) {
       showSnackbar('Error al agregar alumno', 'error');
     }
@@ -150,12 +197,15 @@ function App() {
       await axios.put(`/alumnos/${editingAlumno.id}`, {
         ...editingAlumno,
         grado: Number(editingAlumno.grado),
-        maestro_id: editingAlumno.maestro_id ? Number(editingAlumno.maestro_id) : null
+        maestro_id: editingAlumno.maestro_id ? Number(editingAlumno.maestro_id) : null,
+        foto_url: editingAlumno.foto_url || null
       });
       setOpenEditDialog(false);
       setEditingAlumno(null);
       fetchAlumnos();
       showSnackbar('Alumno actualizado exitosamente');
+      // Disparar evento para actualizar otros componentes
+      window.dispatchEvent(new CustomEvent('alumnos-updated'));
     } catch (error) {
       showSnackbar('Error al actualizar alumno', 'error');
     }
@@ -166,6 +216,8 @@ function App() {
       await axios.delete(`/alumnos/${id}`);
       fetchAlumnos();
       showSnackbar('Alumno eliminado exitosamente');
+      // Disparar evento para actualizar otros componentes
+      window.dispatchEvent(new CustomEvent('alumnos-updated'));
     } catch (error) {
       showSnackbar('Error al eliminar alumno', 'error');
     }
@@ -187,7 +239,7 @@ function App() {
         return <Dashboard />;
       case 'alumnos':
         return (
-          <Box>
+          <Box id="alumnos-section">
             <Typography variant="h5" gutterBottom sx={{ color: '#192d63', fontWeight: 'bold', mb: 3 }}>
               Gestión de Alumnos
             </Typography>
@@ -213,6 +265,13 @@ function App() {
                 onChange={(e) => setNuevoAlumno({ ...nuevoAlumno, email: e.target.value })}
                 required
               />
+              <Button component="label" variant="outlined" disabled={subiendoNuevo}>
+                {subiendoNuevo ? 'Subiendo...' : (nuevoAlumno.foto_url ? 'Cambiar foto' : 'Subir foto')}
+                <input ref={uploadInputNuevoRef} type="file" hidden accept="image/png,image/jpeg" onChange={handleUploadAlumnoNuevo} />
+              </Button>
+              {nuevoAlumno.foto_url && (
+                <img src={`${axios.defaults.baseURL}${nuevoAlumno.foto_url}`} alt="alumno" style={{ height: 48, borderRadius: 4 }} />
+              )}
               {/* Campo de ID Maestro opcional (tutor). Puedes habilitarlo si lo necesitas.
               <TextField 
                 label="ID Maestro (opcional)" 
@@ -244,7 +303,6 @@ function App() {
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Nombre</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Grado</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Email</TableCell>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>ID Maestro</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Acciones</TableCell>
                 </TableRow>
               </TableHead>
@@ -255,7 +313,6 @@ function App() {
                     <TableCell>{a.nombre}</TableCell>
                     <TableCell>{a.grado}</TableCell>
                     <TableCell>{a.email}</TableCell>
-                    <TableCell>{a.maestro_id}</TableCell>
                     <TableCell>
                       <Button 
                         variant="outlined" 
@@ -372,6 +429,13 @@ function App() {
               onChange={(e) => setEditingAlumno({ ...editingAlumno, email: e.target.value })}
               fullWidth
             />
+            <Button component="label" variant="outlined" disabled={subiendoEdit}>
+              {subiendoEdit ? 'Subiendo...' : (editingAlumno?.foto_url ? 'Cambiar foto' : 'Subir foto')}
+              <input ref={uploadInputEditRef} type="file" hidden accept="image/png,image/jpeg" onChange={handleUploadAlumnoEdit} />
+            </Button>
+            {editingAlumno?.foto_url && (
+              <img src={`${axios.defaults.baseURL}${editingAlumno.foto_url}`} alt="alumno" style={{ height: 48, borderRadius: 4 }} />
+            )}
             {/* Campo de ID Maestro opcional
             <TextField
               label="ID Maestro (opcional)"

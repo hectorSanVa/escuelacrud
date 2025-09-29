@@ -48,3 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_alumno_materia_alumno ON alumno_materia(alumno_id
 CREATE INDEX IF NOT EXISTS idx_alumno_materia_materia ON alumno_materia(materia_id);
 
 
+
+
+
+

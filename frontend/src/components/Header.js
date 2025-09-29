@@ -4,14 +4,14 @@ import {
   Toolbar,
   Typography,
   Box,
-  Button,
-  IconButton
+  Button
 } from '@mui/material';
 import {
   AccountBalance as UniversityIcon,
   Logout as LogoutIcon,
   Person as PersonIcon
 } from '@mui/icons-material';
+import ReporteDatos from './ReporteDatos';
 
 function Header({ user, onLogout }) {
   return (
@@ -37,6 +37,7 @@ function Header({ user, onLogout }) {
         <Box sx={{ flexGrow: 1 }} />
         
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <ReporteDatos />
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <PersonIcon sx={{ color: 'white', fontSize: 20 }} />
             <Typography variant="body2" sx={{ color: 'white' }}>

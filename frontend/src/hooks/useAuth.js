@@ -17,6 +17,7 @@ export const useAuth = () => {
   };
 
   useEffect(() => {
+    let isMounted = true;
     const token = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
 
@@ -25,11 +26,11 @@ export const useAuth = () => {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
       // Verificar si el token es válido
-      axios.get('http://localhost:5000/verify-token')
+      axios.get('/verify-token')
         .then(response => {
-          if (response.data.valid) {
+          if (isMounted && response.data.valid) {
             setUser(JSON.parse(savedUser));
-          } else {
+          } else if (isMounted) {
             // Limpiar datos inválidos
             localStorage.removeItem('token');
             localStorage.removeItem('user');
@@ -38,18 +39,26 @@ export const useAuth = () => {
           }
         })
         .catch(() => {
-          // Limpiar datos inválidos
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          delete axios.defaults.headers.common['Authorization'];
-          setUser(null);
+          if (isMounted) {
+            // Limpiar datos inválidos
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            delete axios.defaults.headers.common['Authorization'];
+            setUser(null);
+          }
         })
         .finally(() => {
-          setLoading(false);
+          if (isMounted) {
+            setLoading(false);
+          }
         });
     } else {
       setLoading(false);
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   return { user, login, logout, loading };

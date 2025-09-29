@@ -50,3 +50,7 @@ npm start
 ## Notas
 - No subas `.env` al repo. Usa `backend/env.example` como plantilla.
 - Para producción, mueve secretos a variables de entorno seguras.
+
+
+
+
