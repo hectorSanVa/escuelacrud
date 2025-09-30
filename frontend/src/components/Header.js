@@ -59,7 +59,7 @@ function Header({ user, onLogout, isMobile, onMobileMenuOpen }) {
         <Box sx={{ flexGrow: 1 }} />
         
         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 } }}>
-          <Box sx={{ display: { xs: 'none', lg: 'block' } }}>
+          <Box sx={{ display: { xs: 'block', sm: 'block' } }}>
             <ReporteDatos />
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

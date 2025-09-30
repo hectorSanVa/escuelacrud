@@ -640,16 +640,24 @@ const ReporteDatos = () => {
         variant="contained"
         startIcon={<ReportIcon />}
         onClick={() => setOpen(true)}
+        size="small"
         sx={{
           backgroundColor: '#d4b012',
           color: '#192d63',
           fontWeight: 'bold',
+          fontSize: { xs: '0.75rem', sm: '0.875rem' },
+          px: { xs: 1, sm: 2 },
           '&:hover': {
             backgroundColor: '#b8940f'
           }
         }}
       >
-        Generar Reportes
+        <Box sx={{ display: { xs: 'none', sm: 'inline' } }}>
+          Generar Reportes
+        </Box>
+        <Box sx={{ display: { xs: 'inline', sm: 'none' } }}>
+          Reportes
+        </Box>
       </Button>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
