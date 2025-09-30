@@ -159,52 +159,52 @@ function Dashboard() {
 
       {/* Tarjetas de estadísticas */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card sx={{ bgcolor: '#192d63', color: 'white' }}>
-            <CardContent>
-              <Typography variant="h4" component="div" sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: '#192d63', color: 'white', height: '100%' }}>
+            <CardContent sx={{ textAlign: 'center' }}>
+              <Typography variant="h4" component="div" sx={{ color: '#ffffff', fontWeight: 'bold', mb: 1 }}>
                 {estadisticas.totalAlumnos}
               </Typography>
-              <Typography variant="body2">
+              <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
                 Total de Alumnos
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card sx={{ bgcolor: '#d4b012', color: 'white' }}>
-            <CardContent>
-              <Typography variant="h4" component="div" sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: '#d4b012', color: 'white', height: '100%' }}>
+            <CardContent sx={{ textAlign: 'center' }}>
+              <Typography variant="h4" component="div" sx={{ color: '#ffffff', fontWeight: 'bold', mb: 1 }}>
                 {estadisticas.totalMaestros}
               </Typography>
-              <Typography variant="body2">
+              <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
                 Total de Maestros
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card sx={{ bgcolor: '#735920', color: 'white' }}>
-            <CardContent>
-              <Typography variant="h4" component="div" sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: '#735920', color: 'white', height: '100%' }}>
+            <CardContent sx={{ textAlign: 'center' }}>
+              <Typography variant="h4" component="div" sx={{ color: '#ffffff', fontWeight: 'bold', mb: 1 }}>
                 {estadisticas.totalMaterias}
               </Typography>
-              <Typography variant="body2">
+              <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
                 Total de Materias
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card sx={{ bgcolor: '#2d4a8a', color: 'white' }}>
-            <CardContent>
-              <Typography variant="h4" component="div" sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ bgcolor: '#2d4a8a', color: 'white', height: '100%' }}>
+            <CardContent sx={{ textAlign: 'center' }}>
+              <Typography variant="h4" component="div" sx={{ color: '#ffffff', fontWeight: 'bold', mb: 1 }}>
                 {estadisticas.promedioCalificaciones}
               </Typography>
-              <Typography variant="body2">
+              <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
                 Promedio Calificaciones
               </Typography>
             </CardContent>
@@ -214,14 +214,14 @@ function Dashboard() {
 
       {/* Gráficos */}
       <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Paper sx={{ p: 3 }}>
+        <Grid item xs={12} md={8}>
+          <Paper sx={{ p: { xs: 2, sm: 3 }, height: { xs: 'auto', md: 400 } }}>
             <Bar data={barData} options={options} />
           </Paper>
         </Grid>
         
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Paper sx={{ p: 3 }}>
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: { xs: 2, sm: 3 }, height: { xs: 'auto', md: 400 } }}>
             <Doughnut data={doughnutData} options={doughnutOptions} />
           </Paper>
         </Grid>

@@ -16,7 +16,13 @@ import {
   TablePagination,
   Alert,
   Snackbar,
-  CssBaseline
+  CssBaseline,
+  useMediaQuery,
+  useTheme,
+  Card,
+  CardContent,
+  Menu,
+  MenuItem
 } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import axios from './config/axios';
@@ -74,6 +80,8 @@ const theme = createTheme({
 });
 
 function App() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
   const { user, login, logout, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [alumnos, setAlumnos] = useState([]);
@@ -88,6 +96,7 @@ function App() {
   const uploadInputEditRef = useRef(null);
   const [subiendoNuevo, setSubiendoNuevo] = useState(false);
   const [subiendoEdit, setSubiendoEdit] = useState(false);
+  const [mobileMenuAnchor, setMobileMenuAnchor] = useState(null);
 
   const handleUploadAlumnoNuevo = async (e) => {
     const file = e.target.files?.[0];
@@ -233,6 +242,19 @@ function App() {
     page * rowsPerPage + rowsPerPage
   );
 
+  const handleMobileMenuOpen = (event) => {
+    setMobileMenuAnchor(event.currentTarget);
+  };
+
+  const handleMobileMenuClose = () => {
+    setMobileMenuAnchor(null);
+  };
+
+  const handleMobileTabChange = (tabId) => {
+    setActiveTab(tabId);
+    handleMobileMenuClose();
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -244,13 +266,25 @@ function App() {
               Gestión de Alumnos
             </Typography>
             
-            {/* Formulario de agregar */}
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
+            {/* Formulario de agregar - Responsivo */}
+            <Box sx={{ 
+              display: 'flex', 
+              flexDirection: { xs: 'column', lg: 'row' },
+              gap: 2, 
+              flexWrap: 'wrap', 
+              mb: 3, 
+              p: { xs: 1, sm: 2 }, 
+              bgcolor: '#f5f5f5', 
+              borderRadius: 2 
+            }}>
               <TextField 
                 label="Nombre" 
                 value={nuevoAlumno.nombre} 
                 onChange={(e) => setNuevoAlumno({ ...nuevoAlumno, nombre: e.target.value })}
                 required
+                fullWidth={isMobile}
+                sx={{ minWidth: { xs: '100%', lg: 200 } }}
+                size={isMobile ? 'small' : 'medium'}
               />
               <TextField 
                 label="Grado" 
@@ -258,29 +292,42 @@ function App() {
                 value={nuevoAlumno.grado} 
                 onChange={(e) => setNuevoAlumno({ ...nuevoAlumno, grado: e.target.value })}
                 required
+                fullWidth={isMobile}
+                sx={{ minWidth: { xs: '100%', lg: 120 } }}
+                size={isMobile ? 'small' : 'medium'}
               />
               <TextField 
                 label="Email" 
                 value={nuevoAlumno.email} 
                 onChange={(e) => setNuevoAlumno({ ...nuevoAlumno, email: e.target.value })}
                 required
+                fullWidth={isMobile}
+                sx={{ minWidth: { xs: '100%', lg: 250 } }}
+                size={isMobile ? 'small' : 'medium'}
               />
-              <Button component="label" variant="outlined" disabled={subiendoNuevo}>
+              <Button 
+                component="label" 
+                variant="outlined" 
+                disabled={subiendoNuevo}
+                fullWidth={isMobile}
+                sx={{ minWidth: { xs: '100%', lg: 150 } }}
+                size={isMobile ? 'small' : 'medium'}
+              >
                 {subiendoNuevo ? 'Subiendo...' : (nuevoAlumno.foto_url ? 'Cambiar foto' : 'Subir foto')}
                 <input ref={uploadInputNuevoRef} type="file" hidden accept="image/png,image/jpeg" onChange={handleUploadAlumnoNuevo} />
               </Button>
               {nuevoAlumno.foto_url && (
                 <img src={`${axios.defaults.baseURL}${nuevoAlumno.foto_url}`} alt="alumno" style={{ height: 48, borderRadius: 4 }} />
               )}
-              {/* Campo de ID Maestro opcional (tutor). Puedes habilitarlo si lo necesitas.
-              <TextField 
-                label="ID Maestro (opcional)" 
-                type="number" 
-                value={nuevoAlumno.maestro_id} 
-                onChange={(e) => setNuevoAlumno({ ...nuevoAlumno, maestro_id: e.target.value })}
-              />
-              */}
-              <Button variant="contained" onClick={handleAddAlumno} sx={{ bgcolor: '#192d63' }}>
+              <Button 
+                variant="contained" 
+                onClick={handleAddAlumno} 
+                sx={{ 
+                  bgcolor: '#192d63',
+                  minWidth: { xs: '100%', lg: 150 }
+                }}
+                size={isMobile ? 'small' : 'medium'}
+              >
                 Agregar Alumno
               </Button>
             </Box>
@@ -291,49 +338,96 @@ function App() {
                 label="Buscar por nombre o grado"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                sx={{ width: 300 }}
+                sx={{ width: { xs: '100%', lg: 300 } }}
+                size={isMobile ? 'small' : 'medium'}
               />
             </Box>
 
-            {/* Tabla */}
-            <Table>
-              <TableHead>
-                <TableRow sx={{ bgcolor: '#192d63' }}>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>ID</TableCell>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Nombre</TableCell>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Grado</TableCell>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Email</TableCell>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Acciones</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
+            {/* Vista de tabla o cards según el tamaño de pantalla */}
+            {isMobile ? (
+              // Vista de cards para móviles y tablets
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {paginatedAlumnos.map((a) => (
-                  <TableRow key={a.id} hover>
-                    <TableCell>{a.id}</TableCell>
-                    <TableCell>{a.nombre}</TableCell>
-                    <TableCell>{a.grado}</TableCell>
-                    <TableCell>{a.email}</TableCell>
-                    <TableCell>
-                      <Button 
-                        variant="outlined" 
-                        color="primary" 
-                        onClick={() => handleEditAlumno(a)}
-                        sx={{ mr: 1 }}
-                      >
-                        Editar
-                      </Button>
-                      <Button 
-                        variant="outlined" 
-                        color="error" 
-                        onClick={() => handleDeleteAlumno(a.id)}
-                      >
-                        Eliminar
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <Card key={a.id} sx={{ p: { xs: 1, sm: 2 } }}>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                        {a.nombre}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                        ID: {a.id} | Grado: {a.grado}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                        Email: {a.email}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
+                        <Button 
+                          variant="outlined" 
+                          color="primary" 
+                          onClick={() => handleEditAlumno(a)}
+                          fullWidth={isMobile}
+                          size="small"
+                        >
+                          Editar
+                        </Button>
+                        <Button 
+                          variant="outlined" 
+                          color="error" 
+                          onClick={() => handleDeleteAlumno(a.id)}
+                          fullWidth={isMobile}
+                          size="small"
+                        >
+                          Eliminar
+                        </Button>
+                      </Box>
+                    </CardContent>
+                  </Card>
                 ))}
-              </TableBody>
-            </Table>
+              </Box>
+            ) : (
+              // Vista de tabla para desktop
+              <Box sx={{ overflowX: 'auto' }}>
+                <Table sx={{ minWidth: 650 }}>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: '#192d63' }}>
+                      <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>ID</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Nombre</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Grado</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Email</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Acciones</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {paginatedAlumnos.map((a) => (
+                      <TableRow key={a.id} hover>
+                        <TableCell sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>{a.id}</TableCell>
+                        <TableCell sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>{a.nombre}</TableCell>
+                        <TableCell sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>{a.grado}</TableCell>
+                        <TableCell sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>{a.email}</TableCell>
+                        <TableCell>
+                          <Button 
+                            variant="outlined" 
+                            color="primary" 
+                            onClick={() => handleEditAlumno(a)}
+                            sx={{ mr: 1 }}
+                            size="small"
+                          >
+                            Editar
+                          </Button>
+                          <Button 
+                            variant="outlined" 
+                            color="error" 
+                            onClick={() => handleDeleteAlumno(a.id)}
+                            size="small"
+                          >
+                            Eliminar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
 
             {/* Paginación */}
             <TablePagination
@@ -389,21 +483,53 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ display: 'flex' }}>
-        <Header user={user} onLogout={logout} />
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+        <Header 
+          user={user} 
+          onLogout={logout} 
+          isMobile={isMobile}
+          onMobileMenuOpen={handleMobileMenuOpen}
+        />
+        {!isMobile && <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />}
         <Box
           component="main"
           sx={{
             flexGrow: 1,
-            p: 3,
-            width: { sm: `calc(100% - 240px)` },
-            ml: { sm: '240px' },
+            p: { xs: 1, sm: 2, md: 3 },
+            width: { xs: '100%', lg: `calc(100% - 240px)` },
+            ml: { xs: 0, lg: '240px' },
             mt: '64px' // Espacio para el header fijo
           }}
         >
           {renderContent()}
         </Box>
       </Box>
+
+      {/* Menú móvil */}
+      <Menu
+        anchorEl={mobileMenuAnchor}
+        open={Boolean(mobileMenuAnchor)}
+        onClose={handleMobileMenuClose}
+        sx={{ display: { xs: 'block', lg: 'none' } }}
+      >
+        <MenuItem onClick={() => handleMobileTabChange('dashboard')}>
+          Dashboard
+        </MenuItem>
+        <MenuItem onClick={() => handleMobileTabChange('alumnos')}>
+          Alumnos
+        </MenuItem>
+        <MenuItem onClick={() => handleMobileTabChange('maestros')}>
+          Maestros
+        </MenuItem>
+        <MenuItem onClick={() => handleMobileTabChange('materias')}>
+          Materias
+        </MenuItem>
+        <MenuItem onClick={() => handleMobileTabChange('relaciones')}>
+          Relaciones
+        </MenuItem>
+        <MenuItem onClick={() => handleMobileTabChange('gestion-relaciones')}>
+          Gestión Relaciones
+        </MenuItem>
+      </Menu>
 
       {/* Modal de edición */}
       <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="sm" fullWidth>
