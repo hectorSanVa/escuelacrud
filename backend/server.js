@@ -13,7 +13,11 @@ const app = express();
 
 // Configuración CORS para producción
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: [
+    process.env.FRONTEND_URL || 'http://localhost:3000',
+    'https://escuelacrud.vercel.app',
+    'https://*.vercel.app'
+  ],
   credentials: true
 };
 app.use(cors(corsOptions));
