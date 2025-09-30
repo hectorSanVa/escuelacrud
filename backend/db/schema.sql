@@ -6,7 +6,9 @@ CREATE TABLE IF NOT EXISTS maestros (
   nombre VARCHAR(100) NOT NULL,
   apellido VARCHAR(100),
   email VARCHAR(150),
-  telefono VARCHAR(50)
+  telefono VARCHAR(50),
+  materia VARCHAR(150),
+  foto_url TEXT
 );
 
 CREATE TABLE IF NOT EXISTS alumnos (
@@ -14,7 +16,10 @@ CREATE TABLE IF NOT EXISTS alumnos (
   nombre VARCHAR(100) NOT NULL,
   apellido VARCHAR(100),
   email VARCHAR(150),
-  telefono VARCHAR(50)
+  telefono VARCHAR(50),
+  grado INTEGER,
+  maestro_id INTEGER REFERENCES maestros(id),
+  foto_url TEXT
 );
 
 CREATE TABLE IF NOT EXISTS materias (

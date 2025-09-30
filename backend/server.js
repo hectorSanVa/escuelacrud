@@ -229,6 +229,37 @@ app.post('/init-db', async (req, res) => {
   }
 });
 
+// Endpoint temporal para actualizar estructura de base de datos
+app.post('/update-db', async (req, res) => {
+  try {
+    // Agregar columnas faltantes a la tabla alumnos
+    await pool.query(`
+      ALTER TABLE alumnos 
+      ADD COLUMN IF NOT EXISTS grado INTEGER,
+      ADD COLUMN IF NOT EXISTS maestro_id INTEGER REFERENCES maestros(id),
+      ADD COLUMN IF NOT EXISTS foto_url TEXT
+    `);
+    
+    // Agregar columnas faltantes a la tabla maestros
+    await pool.query(`
+      ALTER TABLE maestros 
+      ADD COLUMN IF NOT EXISTS materia VARCHAR(150),
+      ADD COLUMN IF NOT EXISTS foto_url TEXT
+    `);
+    
+    res.json({ 
+      success: true, 
+      message: 'Estructura de base de datos actualizada correctamente' 
+    });
+  } catch (error) {
+    console.error('Error actualizando DB:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 // Endpoint temporal para verificar tablas
 app.get('/check-tables', async (req, res) => {
   try {
