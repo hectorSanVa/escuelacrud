@@ -73,8 +73,12 @@ pool
 
 // Utilidad: manejo de errores
 function handleError(res, error) {
-  console.error(error);
-  res.status(500).json({ error: 'Ocurrió un error en el servidor' });
+  console.error('Error detallado:', error);
+  res.status(500).json({ 
+    error: 'Ocurrió un error en el servidor',
+    details: error.message,
+    code: error.code
+  });
 }
 
 // Migraciones simples: añadir columnas de foto si no existen
