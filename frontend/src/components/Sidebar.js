@@ -22,8 +22,8 @@ import {
 const drawerWidth = 240;
 
 const menuItems = [
-  { text: 'Dashboard', icon: <DashboardIcon />, id: 'dashboard' },
-  { text: 'Alumnos', icon: <PeopleIcon />, id: 'alumnos' },
+  { text: 'Panel Principal', icon: <DashboardIcon />, id: 'dashboard' },
+  { text: 'Gestión de Estudiantes', icon: <PeopleIcon />, id: 'alumnos' },
   { text: 'Maestros', icon: <SchoolIcon />, id: 'maestros' },
   { text: 'Materias', icon: <SubjectIcon />, id: 'materias' },
   { text: 'Relaciones', icon: <SubjectIcon />, id: 'relaciones' },

@@ -512,10 +512,10 @@ function App() {
         sx={{ display: { xs: 'block', lg: 'none' } }}
       >
         <MenuItem onClick={() => handleMobileTabChange('dashboard')}>
-          Dashboard
+          Panel Principal
         </MenuItem>
         <MenuItem onClick={() => handleMobileTabChange('alumnos')}>
-          Alumnos
+          Gestión de Estudiantes
         </MenuItem>
         <MenuItem onClick={() => handleMobileTabChange('maestros')}>
           Maestros
